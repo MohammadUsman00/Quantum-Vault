@@ -1,0 +1,29 @@
+[workspace]
+members = [
+    "programs/quantum-vault"
+]
+resolver = "2"
+
+[workspace.package]
+rust-version = "1.79.0"
+
+
+
+[profile.release]
+overflow-checks = true
+lto = "fat"
+codegen-units = 1
+[profile.release.build-override]
+opt-level = 3
+incremental = false
+codegen-units = 1
+
+[patch.crates-io]
+crypto-common = "=0.1.6"
+block-buffer = "=0.10.4"
+digest = "=0.10.7"
+hashbrown = "=0.14.5"
+toml_parser = "=0.1.0"
+toml_edit = "=0.21.1"
+proc-macro-crate = "=3.1.0"
+blake3 = "=1.5.0"
