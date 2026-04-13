@@ -16,6 +16,14 @@ npm run dev
 
 > The frontend runs fully without a deployed program. The "Protect Now" flow will simulate on-chain transactions if the program isn't deployed, so you can demo the full UX immediately.
 
+### Frontend troubleshooting (Windows)
+
+- **Use PowerShell syntax:** run commands one per line, or use `;` between commands (not `&&` on older PowerShell).
+- **If `npm run dev` fails or hangs:** Turbopack can be flaky on some Windows setups (especially with OneDrive sync). The default `dev` script uses **Webpack** for broader compatibility. To try Turbopack instead: `npm run dev:turbo`.
+- **Clean reinstall:** delete the `.next` folder, then run `npm install` again and `npm run dev`.
+- **Port 3000 in use:** `npx next dev --webpack -p 3001` then open `http://localhost:3001`.
+- **Project on OneDrive:** if file-watcher errors persist, move the repo to a non-synced folder (for example `C:\dev\quantum-vault`) and run from there.
+
 ---
 
 ## 🔐 Tech Stack
@@ -64,7 +72,28 @@ quantum-vault/
 
 ## ⛓️ Deploy the Anchor Program (Required for Real Transactions)
 
-### Prerequisites
+### Choose your deploy path (Windows-friendly)
+
+#### Option A — WSL2 (recommended for Windows)
+
+Use WSL2 for all Rust/Solana/Anchor commands to avoid native Windows toolchain issues.
+
+```bash
+wsl --install
+```
+
+After installation, open your WSL terminal, clone/open this project there, and run the prerequisites + build steps below inside Linux.
+
+#### Option B — Solana Playground (fastest setup)
+
+Use [Solana Playground](https://beta.solpg.io) to build and deploy to devnet without local Rust/Anchor setup. After deploying, sync the resulting program id back into this repo:
+
+- `program/programs/quantum-vault/src/lib.rs` `declare_id!`
+- `lib/vault-program.ts` `PROGRAM_ID`
+- `lib/idl/quantum_vault.json` `metadata.address`
+- `program/Anchor.toml` `[programs.devnet].quantum-vault`
+
+### Local prerequisites (for Option A)
 
 ```bash
 # 1. Install Rust
@@ -143,6 +172,23 @@ solana program show <YOUR_PROGRAM_ID> --url devnet
 5. **Initialize vault** — Creates PDA account on-chain via Anchor instruction
 6. **Deposit SOL** — CPI transfer from wallet → PDA vault
 7. **Secure keys** — Store PQ secret key base64-encoded in localStorage
+
+---
+
+## 🧠 Security Model (Important)
+
+- **Hybrid PQ model**: ML-DSA operations (keygen/sign/verify) run in the browser, while the chain stores only `SHA-256(PQ public key)` as a 32-byte commitment.
+- **No on-chain Dilithium verification**: Solana runtime does not natively verify ML-DSA signatures in this program.
+- **Transaction authority**: `deposit_sol` and `withdraw_sol` are authorized by the Solana wallet signer (Ed25519), enforced by Anchor account constraints.
+- **PQ binding purpose**: the PQ fingerprint and binding proof provide an auditable, post-quantum ownership link for the demo and future migration flows.
+
+### Non-custodial checklist
+
+- [x] PQ keypair is generated client-side in the browser.
+- [x] PQ secret key is not sent to any backend server by this app.
+- [x] On-chain account stores only `pq_pubkey_hash` (32 bytes), not private material.
+- [x] No vault admin account exists in program instructions; vault operations are constrained to `owner: Signer` with `has_one = owner`.
+- [ ] Production key storage is not implemented (demo uses localStorage; replace with hardware-backed or safer key management for production).
 
 ---
 

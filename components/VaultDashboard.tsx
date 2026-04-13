@@ -2,15 +2,19 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useWallet, useConnection } from "@solana/wallet-adapter-react";
+import { LAMPORTS_PER_SOL } from "@solana/web3.js";
+import type { Wallet } from "@coral-xyz/anchor";
 import { getSOLBalance, getSPLTokens, requestAirdrop, explorerLink, shortenAddress } from "@/lib/solana";
 import {
   loadPQKeys,
   loadStoredKeyMeta,
   getPQKeyFingerprint,
   calculateRiskScore,
+  signWalletAddress,
+  verifyBinding,
   type PQKeypair,
 } from "@/lib/pq-crypto";
-import { getVaultPDA, getVaultAccount, lamportsBNToSol } from "@/lib/vault-program";
+import { getVaultPDA, getVaultAccount, lamportsBNToSol, withdrawSol } from "@/lib/vault-program";
 import QuantumRiskScore from "./QuantumRiskScore";
 import PQKeyDisplay from "./PQKeyDisplay";
 import AssetList from "./AssetList";
@@ -18,7 +22,7 @@ import ProtectButton from "./ProtectButton";
 import type { SPLToken } from "@/lib/solana";
 
 export default function VaultDashboard() {
-  const { publicKey } = useWallet();
+  const { publicKey, signTransaction, signAllTransactions } = useWallet();
   const { connection } = useConnection();
 
   // ─── State ─────────────────────────────────────────────────────────────────
@@ -34,6 +38,10 @@ export default function VaultDashboard() {
   const [isLoading, setIsLoading] = useState(true);
   const [isAirdropping, setIsAirdropping] = useState(false);
   const [airdropSig, setAirdropSig] = useState<string | null>(null);
+  const [withdrawAmount, setWithdrawAmount] = useState("0.1");
+  const [isWithdrawing, setIsWithdrawing] = useState(false);
+  const [withdrawError, setWithdrawError] = useState<string | null>(null);
+  const [withdrawSig, setWithdrawSig] = useState<string | null>(null);
   const [lastRefresh, setLastRefresh] = useState(Date.now());
 
   // ─── Load all data ─────────────────────────────────────────────────────────
@@ -103,6 +111,69 @@ export default function VaultDashboard() {
     setIsAirdropping(false);
     if (sig) setTimeout(() => setLastRefresh(Date.now()), 2000);
   };
+
+  const handleWithdraw = useCallback(async () => {
+    if (!publicKey || !signTransaction || !signAllTransactions) {
+      setWithdrawError("Connect a wallet that supports transaction signing.");
+      return;
+    }
+    if (!isProtected) {
+      setWithdrawError("Activate protection before withdrawing.");
+      return;
+    }
+    if (!pqKeys) {
+      setWithdrawError("PQ keys not found in this browser.");
+      return;
+    }
+
+    const amountSol = Number.parseFloat(withdrawAmount);
+    if (!Number.isFinite(amountSol) || amountSol <= 0) {
+      setWithdrawError("Enter a valid withdraw amount.");
+      return;
+    }
+    if (amountSol > vaultSolBalance) {
+      setWithdrawError("Withdraw amount exceeds vault balance.");
+      return;
+    }
+
+    setWithdrawError(null);
+    setWithdrawSig(null);
+    setIsWithdrawing(true);
+    try {
+      // Client-side PQ possession check for the demo flow.
+      const walletAddress = publicKey.toBase58();
+      const bindingProof = signWalletAddress(pqKeys.secretKey, walletAddress);
+      const validBinding = verifyBinding(pqKeys.publicKey, walletAddress, bindingProof);
+      if (!validBinding) {
+        throw new Error("PQ binding verification failed in this session.");
+      }
+
+      const anchorWallet = {
+        publicKey,
+        signTransaction,
+        signAllTransactions,
+      } as unknown as Wallet;
+
+      const lamports = Math.floor(amountSol * LAMPORTS_PER_SOL);
+      const txSig = await withdrawSol(connection, anchorWallet, lamports);
+      setWithdrawSig(txSig);
+      setTimeout(() => setLastRefresh(Date.now()), 2000);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Withdraw failed";
+      setWithdrawError(message);
+    } finally {
+      setIsWithdrawing(false);
+    }
+  }, [
+    connection,
+    isProtected,
+    pqKeys,
+    publicKey,
+    signAllTransactions,
+    signTransaction,
+    vaultSolBalance,
+    withdrawAmount,
+  ]);
 
   // ─── Risk Score ────────────────────────────────────────────────────────────
 
@@ -258,11 +329,55 @@ export default function VaultDashboard() {
           depositAmountSOL={parseFloat(depositAmount) || 0}
           onProtectionComplete={handleProtectionComplete}
           isProtected={isProtected}
-          onWithdraw={() => {
-            // TODO: wire withdrawal flow
-            window.open(explorerLink(vaultAddress ?? "", "address"), "_blank");
-          }}
         />
+
+        {isProtected && (
+          <div className="rounded-2xl border border-white/10 p-4 bg-black/25 space-y-3">
+            <p className="text-xs text-slate-400">
+              Withdrawals are signed by your Solana wallet on-chain. Quantum Vault also checks PQ key possession in-browser before submitting the transaction.
+            </p>
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-end gap-3">
+              <div className="flex-1">
+                <label className="text-xs text-slate-500 uppercase tracking-widest mb-1.5 block">
+                  Withdraw amount (SOL)
+                </label>
+                <div className="flex items-center gap-2 p-3 rounded-xl bg-black/30 border border-white/10 focus-within:border-violet-500/50 transition-colors">
+                  <input
+                    type="number"
+                    value={withdrawAmount}
+                    onChange={(e) => setWithdrawAmount(e.target.value)}
+                    min="0"
+                    max={vaultSolBalance.toFixed(4)}
+                    step="0.01"
+                    className="flex-1 bg-transparent text-white font-mono text-lg font-semibold outline-none appearance-none"
+                    placeholder="0.1"
+                  />
+                  <span className="text-slate-400 font-medium">SOL</span>
+                </div>
+              </div>
+              <button
+                onClick={handleWithdraw}
+                disabled={isWithdrawing || vaultSolBalance <= 0}
+                className="px-4 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm font-medium transition-all border border-white/10 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isWithdrawing ? "Withdrawing..." : "Withdraw from Vault"}
+              </button>
+            </div>
+            {withdrawSig && (
+              <a
+                href={explorerLink(withdrawSig)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs text-violet-400 hover:text-violet-300"
+              >
+                View withdraw transaction on Explorer ↗
+              </a>
+            )}
+            {withdrawError && (
+              <p className="text-xs text-red-400">{withdrawError}</p>
+            )}
+          </div>
+        )}
 
         {/* PQ key backup warning */}
         {isProtected && pqKeys && (

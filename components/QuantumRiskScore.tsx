@@ -153,6 +153,9 @@ export default function QuantumRiskScore({
       <p className="text-xs text-slate-400 text-center max-w-[180px] leading-relaxed">
         {description}
       </p>
+      <p className="text-[11px] text-slate-500 text-center max-w-[230px] leading-relaxed">
+        Formula: base 75 + high SOL (+10) + SPL exposure (+5) - active vault (-60) - verified PQ binding (-10).
+      </p>
 
       {/* Risk scale */}
       <div className="w-full">
