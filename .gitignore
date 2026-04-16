@@ -19,10 +19,18 @@
 
 # production
 /build
+ 
+# rust/anchor
+/target/
 
 # misc
 .DS_Store
 *.pem
+*.key
+*.p12
+*.secret
+*id_rsa*
+*id_ed25519*
 
 # debug
 npm-debug.log*
@@ -32,6 +40,13 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+
+# Local storage dumps / private key exports (demo only)
+*localStorage*
+*local_storage*
+*local-storage*
+*storageDump*
+*browser-storage*
 
 # vercel
 .vercel

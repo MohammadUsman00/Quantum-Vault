@@ -4,12 +4,13 @@ import { useEffect, useState } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { useRouter } from "next/navigation";
 import ConnectWallet from "@/components/ConnectWallet";
+import QuantumThreatSimulator from "@/components/QuantumThreatSimulator";
 
 const STATS = [
   { value: "100%", label: "of Solana wallets exposed", color: "#f87171" },
   { value: "40×", label: "larger PQ signatures", color: "#a78bfa" },
   { value: "$2.5T", label: "at risk globally", color: "#34d399" },
-  { value: "2026", label: "estimated Q-Day timeline", color: "#60a5fa" },
+  { value: "2030s", label: "estimated Q-Day timeline", color: "#60a5fa" },
 ];
 
 const HOW_IT_WORKS = [
@@ -182,6 +183,9 @@ export default function HomePage() {
           ))}
         </div>
       </section>
+
+      {/* ─── Threat Simulator ───────────────────────────────────────────── */}
+      <QuantumThreatSimulator />
 
       {/* ─── How it works ─────────────────────────────────────────────────── */}
       <section id="how-it-works" className="relative z-10 max-w-5xl mx-auto px-4 py-20">

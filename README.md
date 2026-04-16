@@ -46,6 +46,25 @@ Add project screenshots to `docs/images/` (recommended names below) and they wil
 - On-chain: owner, `pq_pubkey_hash`, `is_protected`, deposited SOL, timestamp, bump.
 - Local browser: PQ public/secret keys and metadata (demo storage).
 
+## Screenshots
+
+Place the following images under `docs/images/` (recommended filenames below):
+
+![Vault dashboard](docs/images/vault-dashboard.png)
+
+![Protect flow](docs/images/protect-flow.png)
+
+![Quantum simulator](docs/images/quantum-simulator.png)
+
+![Explorer transaction](docs/images/explorer-transaction.png)
+
+## Demo Video
+
+Placeholder link (replace with your actual Loom/YouTube URL):
+
+- Loom: https://www.loom.com/TBD
+- YouTube: https://www.youtube.com/watch?v=TBD
+
 ## Protect Flow (End-to-End)
 
 1. Generate ML-DSA-65 keypair in-browser.

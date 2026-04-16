@@ -84,7 +84,7 @@ export async function requestAirdrop(
   connection: Connection,
   publicKey: PublicKey,
   amountSOL: number = 2
-): Promise<string | null> {
+): Promise<{ sig: string | null; error: string | null; status?: number }> {
   try {
     const sig = await connection.requestAirdrop(
       publicKey,
@@ -97,10 +97,17 @@ export async function requestAirdrop(
       blockhash: latestBlockhash.blockhash,
       lastValidBlockHeight: latestBlockhash.lastValidBlockHeight,
     });
-    return sig;
+    return { sig, error: null };
   } catch (e) {
+    const message = e instanceof Error ? e.message : "Airdrop failed";
     console.error("Airdrop failed:", e);
-    return null;
+    const status =
+      message.includes("429") ? 429 : undefined;
+    return {
+      sig: null,
+      error: message,
+      status,
+    };
   }
 }
 

@@ -38,11 +38,15 @@ export default function VaultDashboard() {
   const [isLoading, setIsLoading] = useState(true);
   const [isAirdropping, setIsAirdropping] = useState(false);
   const [airdropSig, setAirdropSig] = useState<string | null>(null);
+  const [airdropError, setAirdropError] = useState<string | null>(null);
   const [withdrawAmount, setWithdrawAmount] = useState("0.1");
   const [isWithdrawing, setIsWithdrawing] = useState(false);
   const [withdrawError, setWithdrawError] = useState<string | null>(null);
   const [withdrawSig, setWithdrawSig] = useState<string | null>(null);
-  const [lastRefresh, setLastRefresh] = useState(Date.now());
+  const [isPqBindingVerified, setIsPqBindingVerified] = useState(false);
+  const [isPqBindingChecking, setIsPqBindingChecking] = useState(false);
+  // Avoid calling Date.now() during render to prevent hydration mismatches.
+  const [lastRefresh, setLastRefresh] = useState(0);
 
   // ─── Load all data ─────────────────────────────────────────────────────────
   const loadData = useCallback(async () => {
@@ -87,6 +91,33 @@ export default function VaultDashboard() {
     loadData();
   }, [loadData, lastRefresh]);
 
+  useEffect(() => {
+    // Trigger initial data load after hydration.
+    setLastRefresh(Date.now());
+  }, []);
+
+  // ─── Client-side PQ binding gate (session) ────────────────────────────────
+  useEffect(() => {
+    if (!isProtected || !publicKey || !pqKeys) {
+      setIsPqBindingChecking(false);
+      setIsPqBindingVerified(false);
+      return;
+    }
+
+    setIsPqBindingChecking(true);
+    try {
+      const walletAddress = publicKey.toBase58();
+      const bindingProof = signWalletAddress(pqKeys.secretKey, walletAddress);
+      const validBinding = verifyBinding(pqKeys.publicKey, walletAddress, bindingProof);
+      setIsPqBindingVerified(validBinding);
+    } catch (e) {
+      console.error("PQ binding verification failed:", e);
+      setIsPqBindingVerified(false);
+    } finally {
+      setIsPqBindingChecking(false);
+    }
+  }, [isProtected, pqKeys, publicKey]);
+
   // ─── Handlers ──────────────────────────────────────────────────────────────
 
   const handleProtectionComplete = useCallback(
@@ -106,10 +137,46 @@ export default function VaultDashboard() {
     if (!publicKey) return;
     setIsAirdropping(true);
     setAirdropSig(null);
-    const sig = await requestAirdrop(connection, publicKey, 2);
+    setAirdropError(null);
+    let sig: string | null = null;
+    let lastError: string | null = null;
+    let lastStatus: number | undefined;
+    const maxAttempts = 5;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      const res = await requestAirdrop(connection, publicKey, 2);
+      if (res.sig) {
+        sig = res.sig;
+        break;
+      }
+
+      lastError = res.error;
+      lastStatus = res.status;
+
+      // Devnet faucets often rate-limit: back off much longer to avoid spam.
+      const backoffMs =
+        lastStatus === 429
+          ? 15000 * attempt
+          : 1500 * attempt;
+
+      await new Promise((r) => setTimeout(r, backoffMs));
+    }
+
     setAirdropSig(sig);
     setIsAirdropping(false);
-    if (sig) setTimeout(() => setLastRefresh(Date.now()), 2000);
+    if (sig) {
+      setTimeout(() => setLastRefresh(Date.now()), 2000);
+    } else {
+      if (lastStatus === 429) {
+        setAirdropError(
+          "Devnet faucet is rate-limited (429). Waiting longer is required. Try again in about 2-3 minutes."
+        );
+      } else {
+        setAirdropError(
+          `Devnet faucet request failed${lastError ? `: ${lastError}` : ""}. Wait a bit and try again.`
+        );
+      }
+    }
   };
 
   const handleWithdraw = useCallback(async () => {
@@ -119,6 +186,10 @@ export default function VaultDashboard() {
     }
     if (!isProtected) {
       setWithdrawError("Activate protection before withdrawing.");
+      return;
+    }
+    if (!isPqBindingVerified) {
+      setWithdrawError("PQ binding is not verified in this session. Activate protection again to unlock withdrawals.");
       return;
     }
     if (!pqKeys) {
@@ -159,14 +230,15 @@ export default function VaultDashboard() {
       setWithdrawSig(txSig);
       setTimeout(() => setLastRefresh(Date.now()), 2000);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Withdraw failed";
-      setWithdrawError(message);
+      const message = error instanceof Error ? error.message : "Withdraw failed. Please try again.";
+      setWithdrawError(`Withdraw failed: ${message}`);
     } finally {
       setIsWithdrawing(false);
     }
   }, [
     connection,
     isProtected,
+    isPqBindingVerified,
     pqKeys,
     publicKey,
     signAllTransactions,
@@ -181,7 +253,7 @@ export default function VaultDashboard() {
     solBalance,
     hasSplTokens: splTokens.length > 0,
     vaultActive: isProtected,
-    pqBindingVerified: !!pqKeys && isProtected,
+    pqBindingVerified: isPqBindingVerified,
   });
 
   if (!publicKey) {
@@ -248,6 +320,19 @@ export default function VaultDashboard() {
         </div>
       )}
 
+      {/* Airdrop error */}
+      {airdropError && (
+        <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/25 flex items-start gap-3">
+          <span className="text-red-300 mt-0.5">❌</span>
+          <div className="space-y-1">
+            <p className="text-xs text-red-400">{airdropError}</p>
+            <p className="text-[11px] text-slate-500">
+              If it keeps failing, your devnet RPC may be rate-limited. Wait and retry.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* ─── Top: Risk Score + PQ Key ────────────────────────────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <QuantumRiskScore
@@ -259,7 +344,7 @@ export default function VaultDashboard() {
           publicKey={pqKeys?.publicKey}
           fingerprint={pqFingerprint}
           isProtected={isProtected}
-          bindingVerified={!!pqKeys && isProtected}
+          bindingVerified={isPqBindingVerified}
           createdAt={pqCreatedAt}
         />
       </div>
@@ -355,13 +440,37 @@ export default function VaultDashboard() {
                   <span className="text-slate-400 font-medium">SOL</span>
                 </div>
               </div>
-              <button
-                onClick={handleWithdraw}
-                disabled={isWithdrawing || vaultSolBalance <= 0}
-                className="px-4 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm font-medium transition-all border border-white/10 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {isWithdrawing ? "Withdrawing..." : "Withdraw from Vault"}
-              </button>
+              {isPqBindingVerified ? (
+                <button
+                  onClick={handleWithdraw}
+                  disabled={isWithdrawing || vaultSolBalance <= 0}
+                  className="px-4 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm font-medium transition-all border border-white/10 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isWithdrawing ? (
+                    <span className="inline-flex items-center gap-2">
+                      <span className="w-3 h-3 border-2 border-violet-400 border-t-transparent rounded-full animate-spin" />
+                      Withdrawing...
+                    </span>
+                  ) : (
+                    "Withdraw SOL"
+                  )}
+                </button>
+              ) : isPqBindingChecking ? (
+                <div className="px-4 py-3 rounded-xl bg-slate-800/40 border border-white/10 text-slate-500 text-sm font-medium flex items-center">
+                  <span className="w-3 h-3 border-2 border-violet-400 border-t-transparent rounded-full animate-spin mr-2" />
+                  Verifying PQ binding...
+                </div>
+              ) : (
+                <div className="px-4 py-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-300 text-xs sm:text-sm font-medium flex items-start">
+                  <div className="mt-0.5 mr-2">⚠️</div>
+                  <div className="leading-tight">
+                    PQ binding not verified in this session.
+                    <div className="text-slate-400 text-[11px] mt-0.5">
+                      Click <span className="text-slate-200 font-semibold">Protect Now</span> again to re-generate and verify the PQ binding.
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
             {withdrawSig && (
               <a
