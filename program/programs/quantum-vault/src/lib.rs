@@ -2,7 +2,7 @@ use anchor_lang::prelude::*;
 use anchor_lang::system_program;
 
 // ⚠️ Replace with output of: anchor keys list  (after anchor build)
-declare_id!("EEeMTdTPuQ69qMeh4ofEhQ5QtKPvLHoHhFnCUfPmhFw3");
+declare_id!("6tLhtJ5vr4R2KF4xoDodQmuWKvGPm1orXRqvtTNy5P3t");
 
 
 // ─── Program ──────────────────────────────────────────────────────────────────

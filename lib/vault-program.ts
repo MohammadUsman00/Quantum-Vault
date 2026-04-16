@@ -26,7 +26,7 @@ import IDL from "./idl/quantum_vault.json";
 // ⚠️ PLACEHOLDER: Replace with your real program ID after: anchor deploy --provider.cluster devnet
 // Using a valid base58 placeholder so the app can boot before deployment.
 export const PROGRAM_ID = new PublicKey(
-  "11111111111111111111111111111111"
+  "6tLhtJ5vr4R2KF4xoDodQmuWKvGPm1orXRqvtTNy5P3t"
 );
 
 

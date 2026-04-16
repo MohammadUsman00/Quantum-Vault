@@ -3,7 +3,7 @@ seeds = false
 skip-lint = false
 
 [programs.devnet]
-quantum-vault = "11111111111111111111111111111111"
+quantum-vault = "6tLhtJ5vr4R2KF4xoDodQmuWKvGPm1orXRqvtTNy5P3t"
 
 
 [registry]
