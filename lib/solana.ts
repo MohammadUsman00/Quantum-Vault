@@ -10,15 +10,7 @@ import {
   PublicKey,
   LAMPORTS_PER_SOL,
   ParsedAccountData,
-  clusterApiUrl,
 } from "@solana/web3.js";
-
-// ─── Connection ───────────────────────────────────────────────────────────────
-
-export const DEVNET_CONNECTION = new Connection(
-  clusterApiUrl("devnet"),
-  "confirmed"
-);
 
 // ─── SOL Balance ─────────────────────────────────────────────────────────────
 
@@ -147,55 +139,6 @@ export function explorerLink(
   }
 }
 
-/**
- * Build a Solscan URL for devnet.
- */
-export function solscanLink(
-  value: string,
-  type: ExplorerType = "transaction"
-): string {
-  const base = "https://solscan.io";
-  const network = "?cluster=devnet";
-
-  switch (type) {
-    case "transaction":
-      return `${base}/tx/${value}${network}`;
-    case "address":
-    case "account":
-      return `${base}/account/${value}${network}`;
-    default:
-      return `${base}/${value}${network}`;
-  }
-}
-
-// ─── Lamport Conversion ───────────────────────────────────────────────────────
-
-export function solToLamports(sol: number): number {
-  return Math.floor(sol * LAMPORTS_PER_SOL);
-}
-
 export function lamportsToSol(lamports: number): number {
   return lamports / LAMPORTS_PER_SOL;
-}
-
-// ─── Transaction Confirmation ─────────────────────────────────────────────────
-
-/**
- * Wait for a transaction to confirm and return its result.
- */
-export async function confirmTransaction(
-  connection: Connection,
-  signature: string
-): Promise<boolean> {
-  try {
-    const latestBlockhash = await connection.getLatestBlockhash();
-    const result = await connection.confirmTransaction({
-      signature,
-      blockhash: latestBlockhash.blockhash,
-      lastValidBlockHeight: latestBlockhash.lastValidBlockHeight,
-    });
-    return !result.value.err;
-  } catch {
-    return false;
-  }
 }

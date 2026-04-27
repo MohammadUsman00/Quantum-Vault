@@ -8,6 +8,8 @@ const inter = Inter({
   variable: "--font-inter",
 });
 
+const faviconSvg = `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚛️</text></svg>`;
+
 export const metadata: Metadata = {
   title: "Quantum Vault — Post-Quantum Solana Protection",
   description:
@@ -26,6 +28,9 @@ export const metadata: Metadata = {
     description:
       "Protect your Solana wallet from quantum computer attacks using NIST-approved CRYSTALS-Dilithium post-quantum cryptography.",
     type: "website",
+  },
+  icons: {
+    icon: `data:image/svg+xml,${encodeURIComponent(faviconSvg)}`,
   },
 };
 

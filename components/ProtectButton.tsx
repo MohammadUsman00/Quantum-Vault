@@ -6,8 +6,9 @@ import { LAMPORTS_PER_SOL } from "@solana/web3.js";
 import type { Wallet } from "@coral-xyz/anchor";
 import {
   generatePQKeypair,
-  signWalletAddress,
-  verifyBinding,
+  createBindingChallenge,
+  signBindingChallenge,
+  verifyBindingChallenge,
   hashPQPublicKey,
   storePQKeys,
   type PQKeypair,
@@ -102,13 +103,21 @@ export default function ProtectButton({
       updateStep(2, { status: "active" });
       await sleep(300);
       const walletAddress = publicKey.toBase58();
-      const signature = signWalletAddress(pqKeys.secretKey, walletAddress);
+      const bindingChallenge = createBindingChallenge({
+        walletAddress,
+        action: "protect",
+      });
+      const signature = signBindingChallenge(pqKeys.secretKey, bindingChallenge);
       updateStep(2, { status: "done" });
 
       // ── Step 3: Verify Binding ───────────────────────────────────────────
       updateStep(3, { status: "active" });
       await sleep(200);
-      const isValid = verifyBinding(pqKeys.publicKey, walletAddress, signature);
+      const isValid = verifyBindingChallenge(
+        pqKeys.publicKey,
+        bindingChallenge,
+        signature
+      );
       if (!isValid) throw new Error("Binding proof verification failed");
       updateStep(3, { status: "done" });
 
@@ -120,54 +129,25 @@ export default function ProtectButton({
 
       // ── Step 5: Initialize Vault on-chain ────────────────────────────────
       updateStep(5, { status: "active", description: "Sending transaction to Solana devnet..." });
-
-      let initTxSig: string;
-      let vaultAddress: string;
-
-      try {
-        initTxSig = await initializeVault(connection, anchorWallet, pqHash);
-        const [vaultPDA] = await getVaultPDA(publicKey);
-        vaultAddress = vaultPDA.toBase58();
-        updateStep(5, {
-          status: "done",
-          description: "Vault PDA created on-chain ✓",
-          txSig: initTxSig,
-        });
-      } catch (e) {
-        // If program not deployed, simulate for hackathon demo
-        console.warn("Program not deployed — using simulated vault:", e);
-        const [vaultPDA] = await getVaultPDA(publicKey);
-        vaultAddress = vaultPDA.toBase58();
-        initTxSig = "SIMULATED_" + Math.random().toString(36).slice(2, 20).toUpperCase();
-        updateStep(5, {
-          status: "done",
-          description: "Vault PDA derived (deploy program for live tx) ✓",
-          txSig: initTxSig,
-        });
-      }
+      const initTxSig = await initializeVault(connection, anchorWallet, pqHash);
+      const [vaultPDA] = await getVaultPDA(publicKey);
+      const vaultAddress = vaultPDA.toBase58();
+      updateStep(5, {
+        status: "done",
+        description: "Vault PDA created on-chain ✓",
+        txSig: initTxSig,
+      });
 
       // ── Step 6: Deposit SOL ──────────────────────────────────────────────
       updateStep(6, { status: "active", description: `Depositing ${depositAmountSOL} SOL...` });
-
-      let depositTxSig: string;
       if (depositAmountSOL > 0) {
-        try {
-          const lamports = Math.floor(depositAmountSOL * LAMPORTS_PER_SOL);
-          depositTxSig = await depositSol(connection, anchorWallet, lamports);
-          updateStep(6, {
-            status: "done",
-            description: `${depositAmountSOL} SOL migrated to vault ✓`,
-            txSig: depositTxSig,
-          });
-        } catch (e) {
-          console.warn("Deposit failed — simulating:", e);
-          depositTxSig = "SIMULATED_" + Math.random().toString(36).slice(2, 20).toUpperCase();
-          updateStep(6, {
-            status: "done",
-            description: "Simulated deposit (deploy program for live tx) ✓",
-            txSig: depositTxSig,
-          });
-        }
+        const lamports = Math.floor(depositAmountSOL * LAMPORTS_PER_SOL);
+        const depositTxSig = await depositSol(connection, anchorWallet, lamports);
+        updateStep(6, {
+          status: "done",
+          description: `${depositAmountSOL} SOL migrated to vault ✓`,
+          txSig: depositTxSig,
+        });
       } else {
         updateStep(6, { status: "done", description: "No SOL to deposit (amount = 0)" });
       }
@@ -276,7 +256,7 @@ export default function ProtectButton({
                 </p>
                 <p className="text-[11px] text-slate-500 mt-0.5">{step.description}</p>
                 {/* Transaction link */}
-                {step.txSig && !step.txSig.startsWith("SIMULATED") && (
+                {step.txSig && (
                   <a
                     href={explorerLink(step.txSig)}
                     target="_blank"
@@ -285,11 +265,6 @@ export default function ProtectButton({
                   >
                     View on Explorer ↗
                   </a>
-                )}
-                {step.txSig?.startsWith("SIMULATED") && (
-                  <span className="inline-flex items-center gap-1 text-[11px] text-amber-500 mt-1">
-                    ⚠️ Simulated (deploy program for real tx)
-                  </span>
                 )}
               </div>
             </div>

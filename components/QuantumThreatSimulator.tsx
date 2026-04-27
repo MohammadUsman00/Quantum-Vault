@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 type Tone = "green" | "red";
 
@@ -31,10 +31,43 @@ export default function QuantumThreatSimulator() {
 
   // Start at 0% so CSS transitions animate to the target widths on mount.
   const [percents, setPercents] = useState<number[]>([0, 0, 0]);
+  const keySizeRef = useRef<HTMLDivElement | null>(null);
+  const [showKeySizes, setShowKeySizes] = useState(false);
+
+  const keySizes = useMemo(
+    () => [
+      { label: "Ed25519 key", bytes: 32, tone: "violet" as const },
+      { label: "ML-DSA-65 key", bytes: 1312, tone: "cyan" as const },
+    ],
+    []
+  );
+  const maxKeySize = keySizes[1].bytes;
 
   useEffect(() => {
     setPercents(items.map((i) => i.targetPercent));
   }, [items]);
+
+  useEffect(() => {
+    const node = keySizeRef.current;
+    if (!node) {
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const [entry] = entries;
+        if (entry?.isIntersecting) {
+          setShowKeySizes(true);
+          observer.disconnect();
+        }
+      },
+      { threshold: 0.25 }
+    );
+
+    observer.observe(node);
+
+    return () => observer.disconnect();
+  }, []);
 
   return (
     <section className="relative z-10 max-w-5xl mx-auto px-4 -mt-10 mb-10">
@@ -92,6 +125,43 @@ export default function QuantumThreatSimulator() {
                     aria-hidden="true"
                   />
                 </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <div
+          ref={keySizeRef}
+          className="mt-6 pt-6 border-t border-white/10 space-y-4"
+        >
+          <div className="flex items-center justify-between gap-3">
+            <h3 className="text-sm font-semibold text-white">
+              Signature key size comparison
+            </h3>
+            <p className="text-xs text-slate-400">Memory footprint contrast</p>
+          </div>
+
+          {keySizes.map((key) => {
+            const widthPercent = (key.bytes / maxKeySize) * 100;
+            const fillWidth = showKeySizes ? `${widthPercent}%` : "0%";
+            const fillTone =
+              key.tone === "violet" ? "bg-violet-400/80" : "bg-cyan-400/80";
+
+            return (
+              <div key={key.label} className="grid grid-cols-[auto_1fr_auto] gap-3 items-center">
+                <p className="text-xs sm:text-sm text-slate-300 w-24 sm:w-32">
+                  {key.label}
+                </p>
+                <div className="h-2 rounded-full bg-white/5 border border-white/10 overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-[width] duration-1000 ease-out ${fillTone}`}
+                    style={{ width: fillWidth }}
+                    aria-hidden="true"
+                  />
+                </div>
+                <p className="text-xs sm:text-sm font-semibold text-slate-200 tabular-nums">
+                  {key.bytes.toLocaleString()} bytes
+                </p>
               </div>
             );
           })}
