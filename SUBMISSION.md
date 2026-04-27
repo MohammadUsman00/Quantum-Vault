@@ -4,15 +4,15 @@
 Solana wallet transaction security today relies on Ed25519 signatures (and associated verification logic) for authorizing ownership and actions. While Ed25519 remains secure against classical attacks, a sufficiently powerful quantum adversary would be able to exploit quantum algorithms (e.g., Shor’s algorithm) to recover private keys from public-key material. This threatens long-term security properties for users who need their “digital identity” and authorization to remain safe well into the quantum era.
 
 ## Innovation
-Quantum Vault implements a real post-quantum identity layer in the browser using **ML-DSA-65 (CRYSTALS-Dilithium)** via **`@noble/post-quantum`**. The ML-DSA-65 keypair is generated, the wallet address is bound to the PQ identity, and the binding proof is verified client-side—**not simulated**. The on-chain program stores only a commitment (`pq_pubkey_hash`), preserving a forward-looking architecture where classical Solana signatures remain usable for transaction authority while a PQ binding layer strengthens future-proof ownership semantics.
+Quantum Vault implements a real post-quantum identity layer in the browser using **ML-DSA-65 (CRYSTALS-Dilithium)** via **`@noble/post-quantum`**. The ML-DSA-65 keypair is generated, the wallet address is bound to the PQ identity via **short-lived challenge messages** (nonce + timestamp + action context), and the binding proof is verified client-side—**not simulated**. The on-chain program stores only a commitment (`pq_pubkey_hash`), preserving a forward-looking architecture where classical Solana signatures remain usable for transaction authority while a PQ binding layer strengthens future-proof ownership semantics.
 
 ## Architecture
 Quantum Vault is intentionally built as a simple three-layer pipeline:
 
 1. **Browser PQ crypto (ML-DSA-65)**
    - Generate ML-DSA-65 keypair in-browser
-   - Sign the connected wallet address to create a quantum binding proof
-   - Verify the binding proof locally to ensure PQ possession in-session
+   - Sign a challenge payload (wallet + action + nonce + timestamp) to create a quantum binding proof
+   - Verify the binding proof locally with freshness bounds to reduce replay risk
 
 2. **SHA-256 hash commitment**
    - Hash the ML-DSA-65 public key using SHA-256
@@ -41,7 +41,7 @@ Quantum Vault is intentionally built as a simple three-layer pipeline:
   - Deposit: `https://explorer.solana.com/?cluster=devnet&tx=TBD`
   - Withdraw: `https://explorer.solana.com/?cluster=devnet&tx=TBD`
 - **GitHub Repository:**
-  - `https://github.com/TBD/TBD`
+  - `https://github.com/MohammadUsman00/Quantum-Vault`
 - **Demo Video:**
   - Loom: https://www.loom.com/TBD
   - YouTube: https://www.youtube.com/watch?v=TBD
@@ -50,6 +50,7 @@ Quantum Vault is intentionally built as a simple three-layer pipeline:
 - **PQ secret keys are stored in `localStorage` (demo-focused).** This is intentionally optimized for hackathon speed and UX; clearing browser storage removes access to the PQ binding material required for withdrawal in this demo.
 - **Transaction authority still uses classical Ed25519 signatures.** The on-chain program remains owner-authorized via the Solana wallet signer, meaning Ed25519 compromise would still affect classical authorization. The PQ layer is designed as an additional binding/commitment mechanism and forward-looking proof of PQ possession, not a replacement for Solana’s current signature scheme in this demo.
 - **Devnet-only scope.** The demo runs on Solana devnet and uses devnet faucet/airdrop assumptions.
+- **No native on-chain ML-DSA verification yet.** The current release uses strict client-side policy gating plus on-chain PQ hash commitment checks.
 
 ## Future Work
 - **SPL token support:** extend the vault to deposit/withdraw SPL tokens beyond SOL.

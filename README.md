@@ -7,9 +7,10 @@ Quantum Vault is a non-custodial Solana vault that adds a post-quantum ownership
 
 - Protects assets behind a Solana program-controlled PDA vault.
 - Generates a real post-quantum keypair (ML-DSA-65) in the browser.
-- Creates and verifies a PQ binding proof against the connected wallet address.
+- Creates and verifies short-lived PQ challenge proofs (nonce + timestamp + action context).
 - Stores only a hash of the PQ public key on-chain (`pq_pubkey_hash`).
 - Supports real `initialize`, `deposit`, and `withdraw` devnet flows with Phantom.
+- Enforces strict client-side withdraw policy gating before transaction submission.
 
 ## Why It Matters
 
@@ -19,8 +20,6 @@ Current wallet signatures rely on Ed25519, which is vulnerable in a large-scale 
 - Add post-quantum cryptographic identity and binding for forward-looking security.
 
 ## UI Preview
-
-Add project screenshots to `docs/images/` (recommended names below) and they will render in GitHub automatically.
 
 ![Landing page](docs/images/landing.png)
 ![Vault dashboard](docs/images/dashboard.png)
@@ -68,12 +67,13 @@ Placeholder link (replace with your actual Loom/YouTube URL):
 ## Protect Flow (End-to-End)
 
 1. Generate ML-DSA-65 keypair in-browser.
-2. Sign wallet address with PQ secret key.
-3. Verify PQ signature locally.
+2. Sign a challenge payload (wallet + action + nonce + timestamp) with the PQ secret key.
+3. Verify challenge signature locally with freshness bounds.
 4. Hash PQ public key using SHA-256.
 5. Initialize on-chain vault PDA and store hash.
 6. Deposit SOL from wallet to PDA vault.
-7. Persist PQ keys locally for withdrawal proof in the session.
+7. Persist PQ keys locally for challenge-based withdrawal proof in the session.
+8. Enforce strict withdraw policy checks (on-chain hash match, session binding, amount constraints).
 
 ## Tech Stack
 
@@ -124,7 +124,7 @@ Open `http://localhost:3000`.
 
 Notes:
 - If port 3000 is busy, Next.js may use 3001.
-- If the on-chain program is not reachable, the app can still show a simulated UX path for demo continuity.
+- The protection flow requires real on-chain initialize/deposit transactions.
 
 ## Deploying the Program
 
@@ -167,7 +167,8 @@ Then sync Program ID to the same four files listed above.
 ## Security Model
 
 - Hybrid model: PQ operations are browser-side; on-chain stores commitment hash only.
-- No native on-chain ML-DSA verification in this demo.
+- Withdraw flow uses short-lived challenge messages (nonce + timestamp + action context) for client-side PQ proof.
+- UI requires local PQ public key hash to match on-chain `pq_pubkey_hash` before treating vault as protected.
 - Vault operations remain owner-authorized through Solana signatures.
 - No admin override path in the contract.
 
@@ -184,6 +185,7 @@ Then sync Program ID to the same four files listed above.
 - PQ secret key storage uses browser localStorage for hackathon demo speed.
 - If browser storage is cleared, user loses local PQ key material.
 - Devnet environment only.
+- Native ML-DSA verification is not executed on-chain in this version.
 
 ## Troubleshooting
 

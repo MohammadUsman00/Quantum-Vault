@@ -3,7 +3,9 @@
 import { useEffect, useState } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { useRouter } from "next/navigation";
+import BeforeAfter from "@/components/BeforeAfter";
 import ConnectWallet from "@/components/ConnectWallet";
+import QDayCountdown from "@/components/QDayCountdown";
 import QuantumThreatSimulator from "@/components/QuantumThreatSimulator";
 
 const STATS = [
@@ -77,7 +79,7 @@ export default function HomePage() {
       </div>
 
       {/* ─── Nav ─────────────────────────────────────────────────────────── */}
-      <nav className="relative z-50 max-w-6xl mx-auto px-4 py-6 flex items-center justify-between">
+      <nav className="relative z-50 max-w-6xl mx-auto px-4 py-6 flex items-center justify-between qv-glass qv-panel rounded-2xl mt-4">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-2xl flex items-center justify-center"
             style={{ background: "linear-gradient(135deg, #7c3aed, #06b6d4)" }}>
@@ -96,7 +98,7 @@ export default function HomePage() {
           <a href="#how-it-works" className="hidden sm:block text-sm text-slate-400 hover:text-white transition-colors">
             How it works
           </a>
-          <a href="https://github.com" target="_blank" rel="noopener noreferrer"
+          <a href="https://github.com/MohammadUsman00/Quantum-Vault" target="_blank" rel="noopener noreferrer"
             className="hidden sm:flex items-center gap-1.5 text-sm text-slate-400 hover:text-white transition-colors">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
               <path d="M12 2C6.477 2 2 6.477 2 12c0 4.418 2.865 8.167 6.839 9.49.5.09.682-.218.682-.484 0-.236-.009-.866-.013-1.7-2.782.603-3.369-1.34-3.369-1.34-.454-1.156-1.11-1.464-1.11-1.464-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.578 9.578 0 0112 6.836c.85.004 1.705.114 2.504.336 1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.202 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .269.18.579.688.481C19.138 20.163 22 16.418 22 12c0-5.523-4.477-10-10-10z"/>
@@ -175,7 +177,7 @@ export default function HomePage() {
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {STATS.map(({ value, label, color }) => (
             <div key={label}
-              className="p-5 rounded-2xl border border-white/8 backdrop-blur-sm text-center group hover:border-white/15 transition-all"
+              className="p-5 rounded-2xl border border-white/8 backdrop-blur-sm text-center group hover:border-white/15 transition-all qv-panel"
               style={{ background: "rgba(255,255,255,0.02)" }}>
               <div className="text-3xl font-black mb-1" style={{ color }}>{value}</div>
               <div className="text-xs text-slate-500 leading-tight">{label}</div>
@@ -183,6 +185,8 @@ export default function HomePage() {
           ))}
         </div>
       </section>
+
+      <QDayCountdown />
 
       {/* ─── Threat Simulator ───────────────────────────────────────────── */}
       <QuantumThreatSimulator />
@@ -215,6 +219,8 @@ export default function HomePage() {
           ))}
         </div>
       </section>
+
+      <BeforeAfter />
 
       {/* ─── Tech Stack ───────────────────────────────────────────────────── */}
       <section className="relative z-10 max-w-5xl mx-auto px-4 py-12">

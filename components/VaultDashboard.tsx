@@ -10,8 +10,10 @@ import {
   loadStoredKeyMeta,
   getPQKeyFingerprint,
   calculateRiskScore,
-  signWalletAddress,
-  verifyBinding,
+  createBindingChallenge,
+  signBindingChallenge,
+  verifyBindingChallenge,
+  hashPQPublicKey,
   type PQKeypair,
 } from "@/lib/pq-crypto";
 import { getVaultPDA, getVaultAccount, lamportsBNToSol, withdrawSol } from "@/lib/vault-program";
@@ -20,6 +22,9 @@ import PQKeyDisplay from "./PQKeyDisplay";
 import AssetList from "./AssetList";
 import ProtectButton from "./ProtectButton";
 import type { SPLToken } from "@/lib/solana";
+
+const STRICT_WITHDRAW_MODE = true;
+const MAX_WITHDRAW_SOL_PER_TX = 10;
 
 export default function VaultDashboard() {
   const { publicKey, signTransaction, signAllTransactions } = useWallet();
@@ -45,6 +50,7 @@ export default function VaultDashboard() {
   const [withdrawSig, setWithdrawSig] = useState<string | null>(null);
   const [isPqBindingVerified, setIsPqBindingVerified] = useState(false);
   const [isPqBindingChecking, setIsPqBindingChecking] = useState(false);
+  const [isOnChainHashMatch, setIsOnChainHashMatch] = useState(false);
   // Avoid calling Date.now() during render to prevent hydration mismatches.
   const [lastRefresh, setLastRefresh] = useState(0);
 
@@ -66,19 +72,37 @@ export default function VaultDashboard() {
       const [vaultPDA] = await getVaultPDA(publicKey);
       setVaultAddress(vaultPDA.toBase58());
 
-      const vaultAcc = await getVaultAccount(connection, publicKey);
-      if (vaultAcc) {
-        setIsProtected(vaultAcc.isProtected);
-        setVaultSolBalance(lamportsBNToSol(vaultAcc.solDeposited));
-      }
-
       // Load PQ keys from localStorage
       const storedKeys = loadPQKeys();
       const storedMeta = loadStoredKeyMeta();
+      let localHashHex: string | null = null;
       if (storedKeys) {
         setPqKeys(storedKeys);
         setPqFingerprint(getPQKeyFingerprint(storedKeys.publicKey));
         if (storedMeta) setPqCreatedAt(storedMeta.createdAt);
+        const hash = await hashPQPublicKey(storedKeys.publicKey);
+        localHashHex = Array.from(hash)
+          .map((b) => b.toString(16).padStart(2, "0"))
+          .join("");
+      } else {
+        setPqKeys(null);
+        setPqFingerprint(undefined);
+        setPqCreatedAt(undefined);
+      }
+
+      const vaultAcc = await getVaultAccount(connection, publicKey);
+      if (vaultAcc) {
+        const onChainHashHex = vaultAcc.pqPubkeyHash
+          .map((b) => b.toString(16).padStart(2, "0"))
+          .join("");
+        const hashMatch = !!localHashHex && localHashHex === onChainHashHex;
+        setIsOnChainHashMatch(hashMatch);
+        setIsProtected(vaultAcc.isProtected && hashMatch);
+        setVaultSolBalance(lamportsBNToSol(vaultAcc.solDeposited));
+      } else {
+        setIsOnChainHashMatch(false);
+        setIsProtected(false);
+        setVaultSolBalance(0);
       }
     } catch (e) {
       console.error("Error loading data:", e);
@@ -98,7 +122,7 @@ export default function VaultDashboard() {
 
   // ─── Client-side PQ binding gate (session) ────────────────────────────────
   useEffect(() => {
-    if (!isProtected || !publicKey || !pqKeys) {
+    if (!isProtected || !publicKey || !pqKeys || !vaultAddress) {
       setIsPqBindingChecking(false);
       setIsPqBindingVerified(false);
       return;
@@ -107,8 +131,17 @@ export default function VaultDashboard() {
     setIsPqBindingChecking(true);
     try {
       const walletAddress = publicKey.toBase58();
-      const bindingProof = signWalletAddress(pqKeys.secretKey, walletAddress);
-      const validBinding = verifyBinding(pqKeys.publicKey, walletAddress, bindingProof);
+      const challenge = createBindingChallenge({
+        walletAddress,
+        action: "session-check",
+        vaultAddress,
+      });
+      const bindingProof = signBindingChallenge(pqKeys.secretKey, challenge);
+      const validBinding = verifyBindingChallenge(
+        pqKeys.publicKey,
+        challenge,
+        bindingProof
+      );
       setIsPqBindingVerified(validBinding);
     } catch (e) {
       console.error("PQ binding verification failed:", e);
@@ -116,7 +149,7 @@ export default function VaultDashboard() {
     } finally {
       setIsPqBindingChecking(false);
     }
-  }, [isProtected, pqKeys, publicKey]);
+  }, [isProtected, pqKeys, publicKey, vaultAddress]);
 
   // ─── Handlers ──────────────────────────────────────────────────────────────
 
@@ -126,6 +159,7 @@ export default function VaultDashboard() {
       setPqFingerprint(getPQKeyFingerprint(keys.publicKey));
       setPqCreatedAt(Date.now());
       setVaultAddress(vault);
+      setIsOnChainHashMatch(true);
       setIsProtected(true);
       // Refresh balances after protection
       setTimeout(() => setLastRefresh(Date.now()), 2000);
@@ -211,10 +245,20 @@ export default function VaultDashboard() {
     setWithdrawSig(null);
     setIsWithdrawing(true);
     try {
-      // Client-side PQ possession check for the demo flow.
+      // Session challenge makes replay harder than static-message checks.
       const walletAddress = publicKey.toBase58();
-      const bindingProof = signWalletAddress(pqKeys.secretKey, walletAddress);
-      const validBinding = verifyBinding(pqKeys.publicKey, walletAddress, bindingProof);
+      const challenge = createBindingChallenge({
+        walletAddress,
+        action: "withdraw",
+        vaultAddress,
+        amountLamports: Math.floor(amountSol * LAMPORTS_PER_SOL),
+      });
+      const bindingProof = signBindingChallenge(pqKeys.secretKey, challenge);
+      const validBinding = verifyBindingChallenge(
+        pqKeys.publicKey,
+        challenge,
+        bindingProof
+      );
       if (!validBinding) {
         throw new Error("PQ binding verification failed in this session.");
       }
@@ -245,7 +289,24 @@ export default function VaultDashboard() {
     signTransaction,
     vaultSolBalance,
     withdrawAmount,
+    vaultAddress,
   ]);
+
+  const withdrawAmountSol = Number.parseFloat(withdrawAmount);
+  const hasValidWithdrawAmount =
+    Number.isFinite(withdrawAmountSol) && withdrawAmountSol > 0;
+  const isWithinPerTxLimit =
+    hasValidWithdrawAmount && withdrawAmountSol <= MAX_WITHDRAW_SOL_PER_TX;
+
+  const strictPolicyChecks = [
+    { label: "Vault protected with matching on-chain PQ hash", ok: isProtected && isOnChainHashMatch },
+    { label: "PQ session binding verified", ok: isPqBindingVerified && !isPqBindingChecking },
+    { label: "Wallet supports transaction signing", ok: !!signTransaction && !!signAllTransactions && !!publicKey },
+    { label: `Withdraw amount <= ${MAX_WITHDRAW_SOL_PER_TX} SOL per transaction`, ok: isWithinPerTxLimit },
+    { label: "Withdraw amount does not exceed vault balance", ok: hasValidWithdrawAmount && withdrawAmountSol <= vaultSolBalance },
+  ];
+
+  const strictPoliciesSatisfied = strictPolicyChecks.every((check) => check.ok);
 
   // ─── Risk Score ────────────────────────────────────────────────────────────
 
@@ -349,6 +410,14 @@ export default function VaultDashboard() {
         />
       </div>
 
+      {publicKey && !isOnChainHashMatch && pqKeys && (
+        <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/25">
+          <p className="text-xs text-amber-300">
+            Local PQ key does not match the on-chain PQ hash commitment for this wallet. Re-run protection with the correct key material before relying on this vault.
+          </p>
+        </div>
+      )}
+
       {/* ─── Middle: Asset List ──────────────────────────────────────────── */}
       <AssetList
         walletAddress={publicKey.toBase58()}
@@ -361,7 +430,7 @@ export default function VaultDashboard() {
       />
 
       {/* ─── Bottom: Protect Button ──────────────────────────────────────── */}
-      <div className="rounded-3xl border border-white/10 p-6 space-y-5"
+      <div className="rounded-3xl border border-white/10 p-6 space-y-5 qv-panel"
         style={{ background: "linear-gradient(135deg, rgba(124,58,237,0.05) 0%, rgba(0,0,0,0) 100%)" }}>
         <div>
           <h2 className="text-lg font-semibold text-white mb-1">
@@ -421,6 +490,23 @@ export default function VaultDashboard() {
             <p className="text-xs text-slate-400">
               Withdrawals are signed by your Solana wallet on-chain. Quantum Vault also checks PQ key possession in-browser before submitting the transaction.
             </p>
+            {STRICT_WITHDRAW_MODE && (
+              <div className="rounded-xl border border-violet-500/25 bg-violet-500/5 p-3">
+                <p className="text-[11px] uppercase tracking-widest text-violet-300 font-semibold mb-2">
+                  Strict Withdraw Mode
+                </p>
+                <div className="space-y-1.5">
+                  {strictPolicyChecks.map((check) => (
+                    <p
+                      key={check.label}
+                      className={`text-xs ${check.ok ? "text-emerald-300" : "text-amber-300"}`}
+                    >
+                      {check.ok ? "✓" : "•"} {check.label}
+                    </p>
+                  ))}
+                </div>
+              </div>
+            )}
             <div className="flex flex-col sm:flex-row items-stretch sm:items-end gap-3">
               <div className="flex-1">
                 <label className="text-xs text-slate-500 uppercase tracking-widest mb-1.5 block">
@@ -443,7 +529,11 @@ export default function VaultDashboard() {
               {isPqBindingVerified ? (
                 <button
                   onClick={handleWithdraw}
-                  disabled={isWithdrawing || vaultSolBalance <= 0}
+                  disabled={
+                    isWithdrawing ||
+                    vaultSolBalance <= 0 ||
+                    (STRICT_WITHDRAW_MODE && !strictPoliciesSatisfied)
+                  }
                   className="px-4 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm font-medium transition-all border border-white/10 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {isWithdrawing ? (
@@ -472,6 +562,11 @@ export default function VaultDashboard() {
                 </div>
               )}
             </div>
+            {STRICT_WITHDRAW_MODE && !strictPoliciesSatisfied && (
+              <p className="text-xs text-amber-300">
+                Withdraw is hard-blocked until all strict policy checks pass.
+              </p>
+            )}
             {withdrawSig && (
               <a
                 href={explorerLink(withdrawSig)}

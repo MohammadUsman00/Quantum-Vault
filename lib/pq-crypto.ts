@@ -26,6 +26,18 @@ export interface StoredPQKeys {
   fingerprint: string;
 }
 
+export interface BindingChallenge {
+  version: "qv1";
+  domain: "quantum-vault";
+  chain: "solana-devnet";
+  action: "protect" | "withdraw" | "session-check";
+  walletAddress: string;
+  vaultAddress?: string;
+  amountLamports?: number;
+  nonce: string;
+  issuedAtMs: number;
+}
+
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const STORAGE_KEY = "quantum_vault_pq_keys";
@@ -54,6 +66,10 @@ function toHex(bytes: Uint8Array): string {
   return Array.from(bytes)
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
+}
+
+function randomNonce(bytes = 16): string {
+  return toHex(crypto.getRandomValues(new Uint8Array(bytes)));
 }
 
 // ─── SHA-256 (native Web Crypto) ──────────────────────────────────────────────
@@ -87,43 +103,45 @@ export function generatePQKeypair(seed?: Uint8Array): PQKeypair {
   };
 }
 
-/**
- * Sign the user's Solana wallet address with their Dilithium secret key.
- * This creates the "quantum binding proof" — a cryptographic attestation
- * that this ML-DSA key is bound to this specific Solana wallet.
- *
- * @param secretKey     ML-DSA-65 secret key (4032 bytes)
- * @param walletAddress Solana base58 public key string
- * @returns             Dilithium signature (~3309 bytes)
- */
-export function signWalletAddress(
-  secretKey: Uint8Array,
-  walletAddress: string
-): Uint8Array {
-  const message = new TextEncoder().encode(
-    `quantum-vault-binding:${walletAddress}`
-  );
-  return ml_dsa65.sign(message, secretKey);
+export function createBindingChallenge(params: {
+  walletAddress: string;
+  action: BindingChallenge["action"];
+  vaultAddress?: string;
+  amountLamports?: number;
+}): BindingChallenge {
+  return {
+    version: "qv1",
+    domain: "quantum-vault",
+    chain: "solana-devnet",
+    action: params.action,
+    walletAddress: params.walletAddress,
+    vaultAddress: params.vaultAddress,
+    amountLamports: params.amountLamports,
+    nonce: randomNonce(),
+    issuedAtMs: Date.now(),
+  };
 }
 
-/**
- * Verify that a PQ binding proof is valid for the given wallet address.
- *
- * @param publicKey     ML-DSA-65 public key (1952 bytes)
- * @param walletAddress Solana base58 public key string
- * @param signature     Dilithium signature to verify
- * @returns             true if signature is valid
- */
-export function verifyBinding(
+export function encodeBindingChallenge(challenge: BindingChallenge): Uint8Array {
+  return new TextEncoder().encode(JSON.stringify(challenge));
+}
+
+export function signBindingChallenge(
+  secretKey: Uint8Array,
+  challenge: BindingChallenge
+): Uint8Array {
+  return ml_dsa65.sign(encodeBindingChallenge(challenge), secretKey);
+}
+
+export function verifyBindingChallenge(
   publicKey: Uint8Array,
-  walletAddress: string,
-  signature: Uint8Array
+  challenge: BindingChallenge,
+  signature: Uint8Array,
+  maxAgeMs = 5 * 60 * 1000
 ): boolean {
   try {
-    const message = new TextEncoder().encode(
-      `quantum-vault-binding:${walletAddress}`
-    );
-    return ml_dsa65.verify(signature, message, publicKey);
+    if (Date.now() - challenge.issuedAtMs > maxAgeMs) return false;
+    return ml_dsa65.verify(signature, encodeBindingChallenge(challenge), publicKey);
   } catch {
     return false;
   }
