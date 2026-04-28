@@ -20,18 +20,20 @@ import {
 import { AnchorProvider, Program, BN } from "@coral-xyz/anchor";
 import type { Wallet } from "@coral-xyz/anchor";
 import IDL from "./idl/quantum_vault.json";
+import { getProgramId } from "./config";
 
 
 // ─── Program ID ───────────────────────────────────────────────────────────────
-// ⚠️ PLACEHOLDER: Replace with your real program ID after: anchor deploy --provider.cluster devnet
-// Using a valid base58 placeholder so the app can boot before deployment.
-export const PROGRAM_ID = new PublicKey(
-  "6tLhtJ5vr4R2KF4xoDodQmuWKvGPm1orXRqvtTNy5P3t"
-);
+// Supports env override via NEXT_PUBLIC_QUANTUM_VAULT_PROGRAM_ID.
+export const PROGRAM_ID = getProgramId();
 
 
 // PDA seed prefix (must match lib.rs)
 export const VAULT_SEED = Buffer.from("quantum-vault");
+const IDL_WITH_ADDRESS = {
+  ...(IDL as Record<string, unknown>),
+  address: PROGRAM_ID.toBase58(),
+};
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -79,8 +81,9 @@ function getProgram(
     commitment: "confirmed",
     preflightCommitment: "confirmed",
   });
+  // Provide address explicitly in the IDL object to avoid runtime resolution issues.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return new Program(IDL as any, provider);
+  return new Program(IDL_WITH_ADDRESS as any, provider);
 }
 
 // ─── Initialize Vault ─────────────────────────────────────────────────────────
@@ -219,8 +222,9 @@ export async function getVaultAccount(
     const provider = new AnchorProvider(connection, dummyWallet as Wallet, {
       commitment: "confirmed",
     });
+    // Keep explicit address in the IDL object here as well.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const program = new Program(IDL as any, provider);
+    const program = new Program(IDL_WITH_ADDRESS as any, provider);
 
     const [vaultPDA] = await getVaultPDA(ownerPubkey);
 

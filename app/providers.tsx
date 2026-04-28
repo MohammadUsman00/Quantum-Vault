@@ -7,7 +7,7 @@ import {
 } from "@solana/wallet-adapter-react";
 import { WalletModalProvider } from "@solana/wallet-adapter-react-ui";
 import { PhantomWalletAdapter } from "@solana/wallet-adapter-wallets";
-import { clusterApiUrl } from "@solana/web3.js";
+import { getDevnetRpcEndpoint } from "@/lib/config";
 
 // Import required wallet adapter CSS
 import "@solana/wallet-adapter-react-ui/styles.css";
@@ -25,8 +25,8 @@ interface ProvidersProps {
  * Wrapped as "use client" since WalletProvider uses browser APIs.
  */
 export default function Providers({ children }: ProvidersProps) {
-  // Devnet RPC endpoint
-  const endpoint = useMemo(() => clusterApiUrl("devnet"), []);
+  // Uses env override when available (NEXT_PUBLIC_SOLANA_RPC_URL).
+  const endpoint = useMemo(() => getDevnetRpcEndpoint(), []);
 
   // Only Phantom for this demo — add more adapters here if needed
   const wallets = useMemo(() => [new PhantomWalletAdapter()], []);

@@ -10,6 +10,7 @@ import {
   signBindingChallenge,
   verifyBindingChallenge,
   hashPQPublicKey,
+  loadPQKeys,
   storePQKeys,
   type PQKeypair,
 } from "@/lib/pq-crypto";
@@ -17,6 +18,7 @@ import {
   initializeVault,
   depositSol,
   getVaultPDA,
+  getVaultAccount,
 } from "@/lib/vault-program";
 import { explorerLink } from "@/lib/solana";
 
@@ -47,6 +49,8 @@ interface ProtectButtonProps {
   onProtectionComplete: (keys: PQKeypair, vaultAddress: string) => void;
   isProtected: boolean;
   onWithdraw?: () => void;
+  disabled?: boolean;
+  disabledReason?: string;
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -56,6 +60,8 @@ export default function ProtectButton({
   onProtectionComplete,
   isProtected,
   onWithdraw,
+  disabled = false,
+  disabledReason,
 }: ProtectButtonProps) {
   const { publicKey, signTransaction, signAllTransactions } = useWallet();
   const { connection } = useConnection();
@@ -72,6 +78,11 @@ export default function ProtectButton({
     },
     []
   );
+
+  const toHex = (bytes: Uint8Array | number[]) =>
+    Array.from(bytes)
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
 
   const handleProtect = async () => {
     if (!publicKey || !signTransaction || !signAllTransactions) {
@@ -93,10 +104,34 @@ export default function ProtectButton({
     } as unknown as Wallet;
 
     try {
-      // ── Step 1: Generate PQ Keypair ──────────────────────────────────────
+      const existingVault = await getVaultAccount(connection, publicKey);
+      let pqKeys: PQKeypair;
+      let isNewKeypair = false;
+
+      // ── Step 1: Generate or recover PQ Keypair ───────────────────────────
       updateStep(1, { status: "active" });
       await sleep(400); // Allow UI to render
-      const pqKeys = generatePQKeypair();
+      if (existingVault) {
+        const storedKeys = loadPQKeys();
+        if (!storedKeys) {
+          throw new Error(
+            "Vault already exists on-chain, but this browser has no matching PQ key backup. Restore the original browser backup to continue."
+          );
+        }
+
+        const localHash = await hashPQPublicKey(storedKeys.publicKey);
+        const onChainHash = new Uint8Array(existingVault.pqPubkeyHash);
+        if (toHex(localHash) !== toHex(onChainHash)) {
+          throw new Error(
+            "Stored PQ key does not match the on-chain vault hash. Use the original PQ key backup used during first protection."
+          );
+        }
+
+        pqKeys = storedKeys;
+      } else {
+        pqKeys = generatePQKeypair();
+        isNewKeypair = true;
+      }
       updateStep(1, { status: "done" });
 
       // ── Step 2: Sign Wallet Address ──────────────────────────────────────
@@ -128,15 +163,25 @@ export default function ProtectButton({
       updateStep(4, { status: "done" });
 
       // ── Step 5: Initialize Vault on-chain ────────────────────────────────
-      updateStep(5, { status: "active", description: "Sending transaction to Solana devnet..." });
-      const initTxSig = await initializeVault(connection, anchorWallet, pqHash);
       const [vaultPDA] = await getVaultPDA(publicKey);
       const vaultAddress = vaultPDA.toBase58();
-      updateStep(5, {
-        status: "done",
-        description: "Vault PDA created on-chain ✓",
-        txSig: initTxSig,
-      });
+      if (existingVault) {
+        updateStep(5, {
+          status: "done",
+          description: "Vault already initialized on-chain ✓",
+        });
+      } else {
+        updateStep(5, {
+          status: "active",
+          description: "Sending transaction to Solana devnet...",
+        });
+        const initTxSig = await initializeVault(connection, anchorWallet, pqHash);
+        updateStep(5, {
+          status: "done",
+          description: "Vault PDA created on-chain ✓",
+          txSig: initTxSig,
+        });
+      }
 
       // ── Step 6: Deposit SOL ──────────────────────────────────────────────
       updateStep(6, { status: "active", description: `Depositing ${depositAmountSOL} SOL...` });
@@ -154,9 +199,17 @@ export default function ProtectButton({
 
       // ── Step 7: Store PQ Keys ────────────────────────────────────────────
       updateStep(7, { status: "active" });
-      await storePQKeys(pqKeys);
-      await sleep(300);
-      updateStep(7, { status: "done" });
+      if (isNewKeypair) {
+        await storePQKeys(pqKeys);
+        await sleep(300);
+        updateStep(7, { status: "done" });
+      } else {
+        await sleep(150);
+        updateStep(7, {
+          status: "done",
+          description: "Using existing local PQ key backup ✓",
+        });
+      }
 
       // ── Complete ─────────────────────────────────────────────────────────
       onProtectionComplete(pqKeys, vaultAddress);
@@ -206,7 +259,7 @@ export default function ProtectButton({
         <button
           id="protect-now-btn"
           onClick={handleProtect}
-          disabled={isRunning || !publicKey}
+          disabled={isRunning || !publicKey || disabled}
           className="group relative w-full py-4 rounded-2xl font-bold text-xl overflow-hidden transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed hover:scale-[1.02] hover:shadow-2xl hover:shadow-violet-500/40"
           style={{
             background: "linear-gradient(135deg, #7c3aed 0%, #3b82f6 60%, #06b6d4 100%)",
@@ -291,6 +344,11 @@ export default function ProtectButton({
       {!publicKey && (
         <p className="text-center text-xs text-slate-500">
           Connect your Phantom wallet to enable protection
+        </p>
+      )}
+      {disabled && disabledReason && (
+        <p className="text-center text-xs text-amber-300">
+          {disabledReason}
         </p>
       )}
     </div>

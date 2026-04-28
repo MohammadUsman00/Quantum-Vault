@@ -16,7 +16,13 @@ import {
   hashPQPublicKey,
   type PQKeypair,
 } from "@/lib/pq-crypto";
-import { getVaultPDA, getVaultAccount, lamportsBNToSol, withdrawSol } from "@/lib/vault-program";
+import {
+  getVaultPDA,
+  getVaultAccount,
+  isProgramDeployed,
+  lamportsBNToSol,
+  withdrawSol,
+} from "@/lib/vault-program";
 import QuantumRiskScore from "./QuantumRiskScore";
 import PQKeyDisplay from "./PQKeyDisplay";
 import AssetList from "./AssetList";
@@ -51,6 +57,7 @@ export default function VaultDashboard() {
   const [isPqBindingVerified, setIsPqBindingVerified] = useState(false);
   const [isPqBindingChecking, setIsPqBindingChecking] = useState(false);
   const [isOnChainHashMatch, setIsOnChainHashMatch] = useState(false);
+  const [programReady, setProgramReady] = useState(true);
   // Avoid calling Date.now() during render to prevent hydration mismatches.
   const [lastRefresh, setLastRefresh] = useState(0);
 
@@ -71,6 +78,15 @@ export default function VaultDashboard() {
       // Check vault PDA
       const [vaultPDA] = await getVaultPDA(publicKey);
       setVaultAddress(vaultPDA.toBase58());
+
+      const deployed = await isProgramDeployed(connection);
+      setProgramReady(deployed);
+      if (!deployed) {
+        setIsProtected(false);
+        setVaultSolBalance(0);
+        setIsOnChainHashMatch(false);
+        return;
+      }
 
       // Load PQ keys from localStorage
       const storedKeys = loadPQKeys();
@@ -394,6 +410,16 @@ export default function VaultDashboard() {
         </div>
       )}
 
+      {!programReady && (
+        <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/25">
+          <p className="text-xs text-amber-300">
+            Quantum Vault program is not reachable on the current RPC endpoint. Set a working
+            `NEXT_PUBLIC_SOLANA_RPC_URL` (devnet) and verify
+            `NEXT_PUBLIC_QUANTUM_VAULT_PROGRAM_ID` for live transactions.
+          </p>
+        </div>
+      )}
+
       {/* ─── Top: Risk Score + PQ Key ────────────────────────────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <QuantumRiskScore
@@ -483,6 +509,8 @@ export default function VaultDashboard() {
           depositAmountSOL={parseFloat(depositAmount) || 0}
           onProtectionComplete={handleProtectionComplete}
           isProtected={isProtected}
+          disabled={!programReady}
+          disabledReason="Program unavailable on current RPC. Update env vars to enable protection."
         />
 
         {isProtected && (
@@ -531,6 +559,7 @@ export default function VaultDashboard() {
                   onClick={handleWithdraw}
                   disabled={
                     isWithdrawing ||
+                    !programReady ||
                     vaultSolBalance <= 0 ||
                     (STRICT_WITHDRAW_MODE && !strictPoliciesSatisfied)
                   }
