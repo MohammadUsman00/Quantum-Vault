@@ -122,6 +122,13 @@ npm run dev
 
 Open `http://localhost:3000`.
 
+Optional environment overrides (`.env.local`):
+
+```bash
+NEXT_PUBLIC_SOLANA_RPC_URL=https://api.devnet.solana.com
+NEXT_PUBLIC_QUANTUM_VAULT_PROGRAM_ID=6tLhtJ5vr4R2KF4xoDodQmuWKvGPm1orXRqvtTNy5P3t
+```
+
 Notes:
 - If port 3000 is busy, Next.js may use 3001.
 - The protection flow requires real on-chain initialize/deposit transactions.
