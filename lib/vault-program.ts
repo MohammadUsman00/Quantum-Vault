@@ -20,12 +20,13 @@ import {
 import { AnchorProvider, Program, BN } from "@coral-xyz/anchor";
 import type { Wallet } from "@coral-xyz/anchor";
 import IDL from "./idl/quantum_vault.json";
-import { getProgramId } from "./config";
 
 
 // ─── Program ID ───────────────────────────────────────────────────────────────
-// Supports env override via NEXT_PUBLIC_QUANTUM_VAULT_PROGRAM_ID.
-export const PROGRAM_ID = getProgramId();
+export const PROGRAM_ID = new PublicKey(
+  process.env.NEXT_PUBLIC_QUANTUM_VAULT_PROGRAM_ID ??
+    "6tLhtJ5vr4R2KF4xoDodQmuWKvGPm1orXRqvtTNy5P3t"
+);
 
 
 // PDA seed prefix (must match lib.rs)

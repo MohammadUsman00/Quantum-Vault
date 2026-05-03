@@ -58,6 +58,8 @@ export default function VaultDashboard() {
   const [isPqBindingChecking, setIsPqBindingChecking] = useState(false);
   const [isOnChainHashMatch, setIsOnChainHashMatch] = useState(false);
   const [programReady, setProgramReady] = useState(true);
+  const [rpcError, setRpcError] = useState<string | null>(null);
+  const [vaultStatus, setVaultStatus] = useState<string | null>(null);
   // Avoid calling Date.now() during render to prevent hydration mismatches.
   const [lastRefresh, setLastRefresh] = useState(0);
 
@@ -65,6 +67,8 @@ export default function VaultDashboard() {
   const loadData = useCallback(async () => {
     if (!publicKey) return;
     setIsLoading(true);
+    setRpcError(null);
+    setVaultStatus(null);
 
     try {
       // Load wallet data in parallel
@@ -85,6 +89,7 @@ export default function VaultDashboard() {
         setIsProtected(false);
         setVaultSolBalance(0);
         setIsOnChainHashMatch(false);
+        setVaultStatus("No vault found. Click Protect Now to create your vault.");
         return;
       }
 
@@ -108,6 +113,7 @@ export default function VaultDashboard() {
 
       const vaultAcc = await getVaultAccount(connection, publicKey);
       if (vaultAcc) {
+        setVaultStatus(null);
         const onChainHashHex = vaultAcc.pqPubkeyHash
           .map((b) => b.toString(16).padStart(2, "0"))
           .join("");
@@ -119,16 +125,24 @@ export default function VaultDashboard() {
         setIsOnChainHashMatch(false);
         setIsProtected(false);
         setVaultSolBalance(0);
+        setVaultStatus("No vault found. Click Protect Now to create your vault.");
       }
     } catch (e) {
       console.error("Error loading data:", e);
+      setRpcError("Unable to reach Solana devnet. Please try again.");
+      setIsProtected(false);
+      setVaultSolBalance(0);
+      setIsOnChainHashMatch(false);
     } finally {
       setIsLoading(false);
     }
   }, [publicKey, connection]);
 
   useEffect(() => {
-    loadData();
+    void loadData().catch(() => {
+      setRpcError("Unable to reach Solana devnet. Please try again.");
+      setIsLoading(false);
+    });
   }, [loadData, lastRefresh]);
 
   useEffect(() => {
@@ -194,7 +208,7 @@ export default function VaultDashboard() {
     const maxAttempts = 5;
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-      const res = await requestAirdrop(connection, publicKey, 2);
+      const res = await requestAirdrop(connection, publicKey, 1);
       if (res.sig) {
         sig = res.sig;
         break;
@@ -219,7 +233,7 @@ export default function VaultDashboard() {
     } else {
       if (lastStatus === 429) {
         setAirdropError(
-          "Devnet faucet is rate-limited (429). Waiting longer is required. Try again in about 2-3 minutes."
+          "Airdrop rate limited. Visit faucet.solana.com to get devnet SOL"
         );
       } else {
         setAirdropError(
@@ -358,6 +372,8 @@ export default function VaultDashboard() {
             <span className="font-mono text-violet-300">{shortenAddress(publicKey.toBase58(), 6)}</span>
             <span className="mx-2 text-slate-600">·</span>
             <span className="text-emerald-400">devnet</span>
+            <span className="mx-2 text-slate-600">·</span>
+            <span className="text-slate-300">{solBalance.toFixed(3)} SOL</span>
           </p>
         </div>
 
@@ -371,7 +387,7 @@ export default function VaultDashboard() {
             {isAirdropping ? (
               <><span className="w-3 h-3 border-2 border-violet-400 border-t-transparent rounded-full animate-spin" /> Airdropping...</>
             ) : (
-              <><span>🪂</span> Get 2 SOL (devnet)</>
+              <><span>🪂</span> Get 1 SOL (devnet)</>
             )}
           </button>
 
@@ -391,7 +407,7 @@ export default function VaultDashboard() {
       {/* Airdrop success */}
       {airdropSig && (
         <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/25 flex items-center justify-between">
-          <span className="text-sm text-emerald-300">🎉 2 SOL airdropped!</span>
+          <span className="text-sm text-emerald-300">🎉 1 SOL airdropped!</span>
           <a href={explorerLink(airdropSig)} target="_blank" rel="noopener noreferrer"
             className="text-xs text-violet-400 hover:text-violet-300">View on Explorer ↗</a>
         </div>
@@ -404,9 +420,24 @@ export default function VaultDashboard() {
           <div className="space-y-1">
             <p className="text-xs text-red-400">{airdropError}</p>
             <p className="text-[11px] text-slate-500">
-              If it keeps failing, your devnet RPC may be rate-limited. Wait and retry.
+              If it keeps failing, use the faucet fallback:
+              {" "}
+              <a
+                href="https://faucet.solana.com"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-violet-400 hover:text-violet-300"
+              >
+                faucet.solana.com
+              </a>
             </p>
           </div>
+        </div>
+      )}
+
+      {rpcError && (
+        <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/25">
+          <p className="text-xs text-red-300">{rpcError}</p>
         </div>
       )}
 
@@ -419,6 +450,20 @@ export default function VaultDashboard() {
           </p>
         </div>
       )}
+
+      {vaultStatus && !isLoading && (
+        <div className="p-3 rounded-xl bg-slate-800/60 border border-white/10">
+          <p className="text-xs text-slate-300">{vaultStatus}</p>
+        </div>
+      )}
+
+      {isLoading && (
+        <div className="p-4 rounded-xl bg-slate-900/50 border border-white/10 flex items-center gap-3">
+          <span className="w-3 h-3 border-2 border-violet-400 border-t-transparent rounded-full animate-spin" />
+          <p className="text-xs text-slate-300">Loading vault state...</p>
+        </div>
+      )}
+
 
       {/* ─── Top: Risk Score + PQ Key ────────────────────────────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

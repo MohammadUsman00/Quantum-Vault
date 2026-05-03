@@ -1,6 +1,8 @@
 # Quantum Vault
 ### Solana Frontier Hackathon 2026 - Post-Quantum Track
 
+🔗 Live Demo: https://quantum-vault-six.vercel.app
+
 Quantum Vault is a non-custodial Solana vault that adds a post-quantum ownership layer using ML-DSA-65 (CRYSTALS-Dilithium). It helps users migrate assets into an on-chain PDA vault while binding that vault to a quantum-safe identity generated in-browser.
 
 ## What This Project Does
@@ -22,9 +24,7 @@ Current wallet signatures rely on Ed25519, which is vulnerable in a large-scale 
 ## UI Preview
 
 ![Landing page](docs/images/landing.png)
-![Vault dashboard](docs/images/dashboard.png)
-![Protect flow](docs/images/protect-flow.png)
-![Protected state](docs/images/protected-state.png)
+Screenshots available at: https://quantum-vault-six.vercel.app
 
 ## Architecture
 
@@ -59,10 +59,7 @@ Place the following images under `docs/images/` (recommended filenames below):
 
 ## Demo Video
 
-Placeholder link (replace with your actual Loom/YouTube URL):
-
-- Loom: https://www.loom.com/TBD
-- YouTube: https://www.youtube.com/watch?v=TBD
+Demo video coming soon.
 
 ## Protect Flow (End-to-End)
 
