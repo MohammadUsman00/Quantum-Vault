@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo } from "react";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { shortenAddress } from "@/lib/solana";
@@ -11,6 +12,11 @@ interface ConnectWalletProps {
 export default function ConnectWallet({ variant = "hero" }: ConnectWalletProps) {
   const { setVisible } = useWalletModal();
   const { connected, publicKey, disconnect } = useWallet();
+  const phantomInstalled = useMemo(() => {
+    if (typeof window === "undefined") return true;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return !!(window as any)?.phantom?.solana?.isPhantom || !!(window as any)?.solana?.isPhantom;
+  }, []);
 
   if (connected && publicKey) {
     return (
@@ -27,6 +33,24 @@ export default function ConnectWallet({ variant = "hero" }: ConnectWalletProps) 
         >
           Disconnect
         </button>
+      </div>
+    );
+  }
+
+  if (!phantomInstalled) {
+    return (
+      <div className="flex flex-col items-center sm:items-start gap-2">
+        <p className="text-xs text-amber-300">
+          Please install Phantom wallet and set it to Devnet
+        </p>
+        <a
+          href="https://phantom.app"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-xs text-violet-300 hover:text-violet-200"
+        >
+          Install Phantom
+        </a>
       </div>
     );
   }

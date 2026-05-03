@@ -12,6 +12,10 @@ import {
   ParsedAccountData,
 } from "@solana/web3.js";
 
+export const RPC_URL =
+  process.env.NEXT_PUBLIC_SOLANA_RPC_URL ?? "https://api.devnet.solana.com";
+export const SHARED_CONNECTION = new Connection(RPC_URL, "confirmed");
+
 // ─── SOL Balance ─────────────────────────────────────────────────────────────
 
 /**
@@ -67,7 +71,7 @@ export async function getSPLTokens(
 // ─── Airdrop ──────────────────────────────────────────────────────────────────
 
 /**
- * Request a devnet airdrop of 2 SOL. Rate limited — may fail if called
+ * Request a devnet airdrop. Rate limited — may fail if called
  * too frequently. Only use on devnet.
  *
  * @returns transaction signature or null on failure
@@ -75,7 +79,7 @@ export async function getSPLTokens(
 export async function requestAirdrop(
   connection: Connection,
   publicKey: PublicKey,
-  amountSOL: number = 2
+  amountSOL: number = 1
 ): Promise<{ sig: string | null; error: string | null; status?: number }> {
   try {
     const sig = await connection.requestAirdrop(
